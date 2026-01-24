@@ -1,0 +1,19 @@
+.node {
+  position: absolute;
+  padding: 16px 20px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+  cursor: grab;
+  user-select: none;
+  transition: transform 0.2s;
+}
+
+.node:active {
+  cursor: grabbing;
+  transform: scale(1.05);
+}
+
+body {
+  background: red;
+}

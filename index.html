@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Unbound - Organized</title>
+    <style>
+        :root {
+            --primary: #2b00ff; 
+            --border: #e2e8f0;
+            --grid-size: 40px; 
+            --icon-gray: #94a3b8;
+            --text-main: #1e293b;
+            --bg-sidebar: #fff;
+            --node-conn: #3b82f6;
+            --node-spr: #22c55e;
+            --node-del: #ef4444;
+            --status-not: #64748b;
+            --status-prog: #f59e0b;
+            --status-done: #10b981;
+            --pri-high: #ef4444;
+            --pri-med: #64748b;
+            --pri-low: #3b82f6;
+        }
+
+        body { margin: 0; display: flex; height: 100vh; font-family: 'Inter', sans-serif; overflow: hidden; background: #fff; color: var(--text-main); }
+
+        /* --- SIDEBAR --- */
+        #taskbar {
+            width: 340px; background: var(--bg-sidebar); border-right: 1px solid var(--border);
+            display: flex; flex-direction: column; padding: 24px; z-index: 100; box-sizing: border-box; flex-shrink: 0;
+        }
+        .logo { font-size: 1.6rem; font-weight: 900; margin-bottom: 24px; letter-spacing: -0.05em; color: #000; display: flex; align-items: baseline; }
+        .logo span { display: inline-block; width: 6px; height: 6px; background: var(--primary); border-radius: 50%; margin-left: 2px; }
+        
+        .create-btn { 
+            background: var(--primary); color: white; border: none; padding: 16px; border-radius: 14px; 
+            font-weight: 700; cursor: pointer; margin-bottom: 16px; font-size: 1rem; width: 100%;
+            display: flex; align-items: center; justify-content: center; gap: 10px;
+        }
+        .create-btn svg { width: 16px; height: 16px; stroke: white; stroke-width: 3; }
+        
+        .filter-bar { display: flex; gap: 8px; margin-bottom: 20px; }
+        .filter-input { 
+            flex: 1; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--border); 
+            font-family: inherit; font-size: 0.8rem; background: #f8fafc; outline: none; color: var(--text-main); font-weight: 600;
+        }
+
+        #taskList { flex-grow: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding-right: 4px; }
+
+        /* --- RICH CARDS --- */
+        .rich-card { background: white; border: 1px solid var(--border); border-radius: 18px; padding: 16px; cursor: pointer; transition: 0.2s; position: relative; }
+        .rich-card:hover { border-color: #cbd5e1; transform: translateY(-2px); }
+        .tag-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+        
+        .tag-pill { font-size: 9px; font-weight: 600; padding: 3px 8px; border-radius: 6px; color: white; }
+        .priority-pill { font-size: 9px; font-weight: 600; padding: 3px 8px; border-radius: 6px; color: white; border: 1px solid rgba(255,255,255,0.2); }
+
+        .task-title { font-size: 14px; font-weight: 600; margin-bottom: 10px; }
+        .card-footer { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--icon-gray); border-top: 1px solid #f1f5f9; padding-top: 8px; }
+        .status-dot-container { display: flex; align-items: center; gap: 6px; font-weight: 700; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+        /* --- VIEWPORT --- */
+        #viewport { flex-grow: 1; position: relative; overflow: hidden; background: #fafafa; }
+        #canvas-view, #plan-view, #today-view { position: absolute; width: 100%; height: 100%; top: 0; left: 0; transform-origin: 0 0; }
+        #canvas, #plan-canvas { 
+            width: 5000px; height: 5000px; position: absolute; 
+            background-image: radial-gradient(#e2e8f0 1.5px, transparent 1.5px); 
+            background-size: var(--grid-size) var(--grid-size);
+            transform-origin: 0 0;
+        }
+        
+        #plan-view { display: none; z-index: 5; background: #fafafa; }
+        #today-view { display: none; z-index: 6; background: #fafafa; padding: 60px; box-sizing: border-box; overflow-y: auto; }
+        
+        .today-header { margin-bottom: 40px; }
+        .today-grid { display: flex; gap: 30px; align-items: flex-start; max-width: 1200px; }
+        .today-column { flex: 1; display: flex; flex-direction: column; gap: 16px; }
+        .column-label { font-size: 0.75rem; font-weight: 800; color: var(--icon-gray); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+
+        .plan-container { padding: 80px; display: flex; gap: 40px; align-items: flex-start; }
+        .plan-column { width: 320px; display: flex; flex-direction: column; gap: 16px; }
+        .category-header { 
+            background: white; padding: 12px 16px; border-radius: 12px; 
+            font-weight: 900; border: 1px solid var(--border); cursor: pointer;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .category-content.collapsed { display: none; }
+
+        #svg-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+        .map-node { 
+            position: absolute; z-index: 2; padding: 14px 18px; border-radius: 14px;
+            color: white; width: 200px; box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+            cursor: grab; display: flex; flex-direction: column; min-height: 50px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .map-node:hover { transform: scale(1.03); box-shadow: 0 10px 25px rgba(0,0,0,0.18); }
+        
+        @keyframes nodePulse {
+            0% { transform: scale(1); box-shadow: 0 0 0 0px rgba(43, 0, 255, 0.4); }
+            50% { transform: scale(1.05); box-shadow: 0 0 0 15px rgba(43, 0, 255, 0); }
+            100% { transform: scale(1); box-shadow: 0 0 0 0px rgba(43, 0, 255, 0); }
+        }
+        #viewport .flash-suggest { 
+            animation: nodePulse 1.5s ease-in-out infinite; 
+            border: 2px solid var(--primary) !important;
+            z-index: 10;
+        }
+
+        .map-node textarea {
+            background: transparent; border: none; color: white; font-weight: 700;
+            font-size: 14px; width: 100%; outline: none; font-family: inherit;
+            resize: none; overflow: hidden; line-height: 1.4; margin-bottom: 4px;
+        }
+        .node-controls { position: absolute; bottom: -14px; left: 0; right: 0; display: none; justify-content: center; gap: 8px; z-index: 20; }
+        .map-node:hover .node-controls { display: flex; }
+        .ctrl-btn { width: 26px; height: 26px; border-radius: 50%; border: 3px solid white; display: flex; align-items: center; justify-content: center; cursor: pointer; color: white; font-weight: 900; pointer-events: auto; }
+        .node-connector { background: var(--node-conn); font-size: 12px; }
+        .sprout-btn { background: var(--node-spr); font-size: 16px; }
+        .delete-btn { position: absolute; top: -10px; left: -10px; width: 20px; height: 20px; background: var(--node-del); border-radius: 6px; border: 2px solid white; display: none; align-items: center; justify-content: center; cursor: pointer; font-size: 10px; z-index: 20; }
+        .map-node:hover .delete-btn { display: flex; }
+
+        /* --- MODALS --- */
+        .modal-overlay { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); z-index: 2000; justify-content: center; align-items: center; }
+        .modal-content { background: white; padding: 32px; border-radius: 24px; width: 340px; display: flex; flex-direction: column; gap: 16px; }
+        .modal-content label { font-size: 0.7rem; font-weight: 800; color: var(--icon-gray); text-transform: uppercase; margin-bottom: -10px; }
+        .modal-content input, .modal-content select { padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: #f8fafc; outline: none; font-family: inherit; }
+        .confirm-btn { background: var(--node-del); color: white; border: none; padding: 12px; border-radius: 10px; font-weight: 700; cursor: pointer; }
+        
+        .delete-task-btn { background: none; border: none; color: var(--node-del); font-weight: 800; cursor: pointer; font-size: 0.75rem; margin-top: 8px; }
+
+        .energy-grid { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 20px 0; }
+        .energy-btn {
+            width: 40px; height: 40px; border-radius: 12px; border: 1px solid var(--border);
+            background: #f8fafc; color: var(--text-main); font-weight: 800; cursor: pointer;
+            transition: all 0.2s; display: flex; align-items: center; justify-content: center;
+        }
+        .energy-btn:hover { border-color: var(--primary); color: var(--primary); }
+        .energy-btn.selected { background: var(--primary); color: white; border-color: var(--primary); }
+
+        /* --- DOCK & AI CHAT --- */
+        .view-dock { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: white; padding: 6px; border-radius: 20px; display: flex; align-items: center; gap: 4px; box-shadow: 0 10px 30px rgba(0,0,0,0.12); border: 1px solid var(--border); z-index: 1000; }
+        .dock-group { display: flex; align-items: center; gap: 4px; padding: 0 8px; border-right: 1px solid var(--border); }
+        .dock-btn { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--icon-gray); }
+        .dock-btn.active { background: var(--primary); color: white; }
+        
+        #aiChat {
+            position: fixed; bottom: 95px; left: 50%; transform: translateX(-50%);
+            background: white; padding: 12px 20px; border-radius: 18px; border: 1px solid var(--border);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1); font-size: 0.85rem; z-index: 2000;
+            display: none; width: 320px; text-align: left; line-height: 1.5;
+            animation: chatSlide 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        @keyframes chatSlide { from { transform: translate(-50%, 20px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
+
+        .zoom-input { 
+            width: 45px; border: none; background: transparent; 
+            font-weight: 800; font-size: 11px; color: var(--icon-gray); 
+            text-align: center; outline: none; font-family: inherit;
+        }
+    </style>
+</head>
+<body>
+
+<div id="energyModal" class="modal-overlay" style="display: flex;">
+    <div class="modal-content" style="text-align: center; width: 400px;">
+        <h3 style="margin:0; font-weight:900;">How's your energy?</h3>
+        <p style="font-size: 0.8rem; color: var(--icon-gray); font-weight: 600;">Choose a level from 1 (Low) to 10 (Peak).</p>
+        <div class="energy-grid">
+            <button class="energy-btn" onclick="selectEnergy(1, this)">1</button>
+            <button class="energy-btn" onclick="selectEnergy(2, this)">2</button>
+            <button class="energy-btn" onclick="selectEnergy(3, this)">3</button>
+            <button class="energy-btn" onclick="selectEnergy(4, this)">4</button>
+            <button class="energy-btn selected" onclick="selectEnergy(5, this)">5</button>
+            <button class="energy-btn" onclick="selectEnergy(6, this)">6</button>
+            <button class="energy-btn" onclick="selectEnergy(7, this)">7</button>
+            <button class="energy-btn" onclick="selectEnergy(8, this)">8</button>
+            <button class="energy-btn" onclick="selectEnergy(9, this)">9</button>
+            <button class="energy-btn" onclick="selectEnergy(10, this)">10</button>
+        </div>
+        <button class="create-btn" onclick="saveEnergyAndStart()">Start Session</button>
+    </div>
+</div>
+
+<div id="taskbar">
+    <div class="logo">unbound<span></span></div>
+    <button class="create-btn" onclick="openModal()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5V19M5 12H19"/></svg>
+        Create New Task
+    </button>
+    <div class="filter-bar">
+        <select id="filterTag" class="filter-input" onchange="applyFilters()">
+            <option value="All">All Tags</option>
+        </select>
+        <select id="sortOption" class="filter-input" onchange="applyFilters()">
+            <option value="soon">Soonest</option>
+            <option value="late">Latest</option>
+            <option value="tag">Sort by Tag</option>
+        </select>
+    </div>
+    <div id="taskList"></div>
+</div>
+
+<div id="viewport">
+    <div id="canvas-view"><div id="canvas"><svg id="svg-layer"></svg></div></div>
+    <div id="plan-view"><div id="plan-canvas"><div class="plan-container" id="planGrid"></div></div></div>
+    <div id="today-view">
+        <div class="today-header">
+            <h1 style="font-weight: 900; font-size: 2.5rem; margin: 0;">Today's Focus</h1>
+            <p id="todayDateLabel" style="color: var(--icon-gray); font-weight: 700; margin-top: 4px;"></p>
+        </div>
+        <div id="todayGrid" class="today-grid"></div>
+    </div>
+</div>
+
+<div id="aiChat"></div>
+
+<div class="view-dock">
+    <div class="dock-group">
+        <div class="dock-btn active" id="btn-map" onclick="switchView('map')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2L2 7L12 12L22 7L12 2Z"/><path d="M2 17L12 22L22 17"/><path d="M2 12L12 17L22 12"/></svg></div>
+        <div class="dock-btn" id="btn-plan" onclick="switchView('plan')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></div>
+        <div class="dock-btn" id="btn-today" onclick="switchView('today')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>
+        <div class="dock-btn" id="btn-suggest" onclick="suggestTasks()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 3L14.5 9L21 11.5L14.5 14L12 20L9.5 14L3 11.5L9.5 9L12 3Z"/></svg></div>
+        <div class="dock-btn" id="btn-energy" onclick="document.getElementById('energyModal').style.display='flex'" title="Adjust Energy">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+            </svg>
+        </div>
+    </div>
+    <div class="dock-group" style="border:none">
+        <div class="dock-btn" onclick="zoom(-0.1)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12H19"/></svg></div>
+        <input type="text" id="zoomLevel" class="zoom-input" value="100%" onchange="handleZoomInput(this)">
+        <div class="dock-btn" onclick="zoom(0.1)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5V19M5 12H19"/></svg></div>
+    </div>
+</div>
+
+<div id="modal" class="modal-overlay">
+    <div class="modal-content">
+        <h3 style="margin:0; font-weight:900;">Task Details</h3>
+        <label>Title</label><input type="text" id="tTitle">
+        <label>Tags</label><input type="text" id="tTags">
+        <label>Priority</label>
+        <select id="tPriority"><option>High</option><option selected>Medium</option><option>Low</option></select>
+        <label>Due Date</label><input type="date" id="tDate">
+        <label>Status</label>
+        <select id="tStatus"><option>Not started</option><option>In Progress</option><option>Done</option></select>
+        <button class="create-btn" id="modalSubmit">Save Task</button>
+        <button id="deleteTaskBtn" class="delete-task-btn" onclick="deleteTask()">Delete Task Permanently</button>
+        <button onclick="closeModal()" style="background:none; border:none; color:var(--icon-gray); cursor:pointer; font-weight:800; margin-top: 4px;">Cancel</button>
+    </div>
+</div>
+
+<div id="confirmModal" class="modal-overlay">
+    <div class="modal-content" style="text-align: center;">
+        <h3 style="margin:0; font-weight:900;">Delete Node?</h3>
+        <p style="font-size: 0.9rem; color: var(--icon-gray); font-weight: 600;">This will remove the node permanently.</p>
+        <button class="confirm-btn" onclick="executeDelete()">Delete</button>
+        <button onclick="closeConfirm()" style="background:none; border:none; color:var(--icon-gray); cursor:pointer; font-weight:800;">Cancel</button>
+    </div>
+</div>
+
+<script>
+    let taskData = [
+        { id: 1, title: "Physics Final Project", tags: ["Physics"], priority: "High", status: "In Progress", date: "2026-01-20", inSidebar: true },
+        { id: 2, title: "Calculus III", tags: ["Math"], priority: "Medium", status: "Not started", date: "2026-06-20", inSidebar: true },
+        { id: 3, title: "English Essay Review", tags: ["English"], priority: "Low", status: "Not started", date: "2026-01-22", inSidebar: true },
+        { id: 4, title: "Lab Results Summary", tags: ["Physics"], priority: "Medium", status: "Not started", date: "2026-01-21", inSidebar: true },
+        { id: 5, title: "History Presentation", tags: ["History"], priority: "High", status: "Not started", date: "2026-01-24", inSidebar: true }
+    ];
+    let connections = [];
+    let scale = 1.0;
+    let colorRegistry = { 'physics': '#f97316', 'math': '#3b82f6', 'english': '#a855f7', 'history': '#10b981' };
+    let currentView = 'map';
+    let editingId = null;
+    let pendingDeleteNode = null;
+    let userEnergyLevel = 5;
+
+    window.onload = () => { 
+        document.getElementById('todayDateLabel').innerText = new Date("2026-01-20").toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+        updateTagFilter(); renderAll(); setupPanning(); setupWheelZoom(); 
+    };
+
+    function selectEnergy(val, btn) {
+        userEnergyLevel = val;
+        document.querySelectorAll('.energy-btn').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        renderAll();
+    }
+
+    function saveEnergyAndStart() {
+        document.getElementById('energyModal').style.display = 'none';
+    }
+
+    function suggestTasks() {
+        switchView('today');
+        const chat = document.getElementById('aiChat');
+        chat.innerHTML = "<em>Unbound AI is analyzing your load...</em>";
+        chat.style.display = 'block';
+
+        setTimeout(() => {
+            const today = new Date("2026-01-20");
+            const candidates = taskData.filter(t => t.status !== "Done");
+            
+            let message = "";
+            if (userEnergyLevel <= 3) {
+                message = `<strong>Unbound AI:</strong> Your energy is low (${userEnergyLevel}/10). Focus only on 1 high-priority task, then switch to "Low Friction" wins.`;
+            } else if (userEnergyLevel >= 8) {
+                message = `<strong>Unbound AI:</strong> Energy is peak (${userEnergyLevel}/10)! I've pulled in Calculus III from your backlog for deep work capacity.`;
+            } else {
+                message = `<strong>Unbound AI:</strong> Balanced energy (${userEnergyLevel}/10). Steady progress on Physics first.`;
+            }
+            
+            chat.innerHTML = message;
+            const suggestedIds = candidates.filter(t => {
+                if (userEnergyLevel <= 3) return t.priority === "Low" || t.id === 1;
+                if (userEnergyLevel >= 8) return t.priority === "High" || t.id === 2;
+                return t.id === 1 || t.id === 4;
+            }).map(t => t.id);
+
+            document.querySelectorAll('#viewport [data-id]').forEach(el => {
+                const id = parseInt(el.getAttribute('data-id'));
+                if (suggestedIds.includes(id)) el.classList.add('flash-suggest');
+            });
+
+            setTimeout(() => { document.querySelectorAll('.flash-suggest').forEach(el => el.classList.remove('flash-suggest')); }, 3000);
+            setTimeout(() => { chat.style.display = 'none'; }, 10000);
+        }, 1200);
+    }
+
+    function deleteTask() {
+        if (!editingId) return;
+        taskData = taskData.filter(t => t.id != editingId);
+        const node = document.querySelector(`.map-node[data-id="${editingId}"]`);
+        if (node) {
+            connections = connections.filter(c => {
+                if(c.from === node || c.to === node) { c.element.remove(); return false; }
+                return true;
+            });
+            node.remove();
+        }
+        closeModal(); renderAll(); updateTagFilter();
+    }
+
+    function handleZoomInput(el) {
+        let val = parseFloat(el.value.replace('%', ''));
+        if(!isNaN(val)) {
+            let targetScale = val / 100;
+            let delta = targetScale - scale;
+            zoom(delta);
+        } else {
+            el.value = Math.round(scale * 100) + "%";
+        }
+    }
+
+    function getTagColor(tag) {
+        const t = tag.toLowerCase().trim();
+        if (!colorRegistry[t]) colorRegistry[t] = `hsl(${Math.floor(Math.random() * 360)}, 70%, 45%)`;
+        return colorRegistry[t];
+    }
+
+    function getPriorityColor(pri) {
+        if(pri === "High") return "var(--pri-high)";
+        if(pri === "Low") return "var(--pri-low)";
+        return "var(--pri-med)";
+    }
+
+    function getStatusColor(status) {
+        switch(status) {
+            case "In Progress": return "var(--status-prog)";
+            case "Done": return "var(--status-done)";
+            default: return "var(--status-not)";
+        }
+    }
+    
+    function formatDate(d) {
+        if(!d) return "No Date";
+        const date = new Date(d);
+        return new Date(date.valueOf() + date.getTimezoneOffset() * 60000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
+
+    function updateTagFilter() {
+        const select = document.getElementById('filterTag');
+        const tags = new Set();
+        taskData.forEach(t => t.tags.forEach(tag => tags.add(tag)));
+        select.innerHTML = '<option value="All">All Tags</option>';
+        tags.forEach(tag => {
+            const opt = document.createElement('option');
+            opt.value = tag; opt.innerText = tag;
+            select.appendChild(opt);
+        });
+    }
+
+    function applyFilters() { renderAll(); }
+
+    function zoom(delta) {
+        scale = Math.min(Math.max(0.3, scale + delta), 2.5);
+        const target = currentView === 'map' ? document.getElementById('canvas') : document.getElementById('plan-canvas');
+        if (target) target.style.transform = `scale(${scale})`;
+        document.getElementById('zoomLevel').value = Math.round(scale * 100) + "%";
+        if(currentView === 'map') updateLines();
+    }
+
+    function setupWheelZoom() {
+        window.addEventListener('wheel', (e) => {
+            if (e.ctrlKey) { e.preventDefault(); zoom(e.deltaY > 0 ? -0.05 : 0.05); }
+        }, { passive: false });
+    }
+
+    function getRichCardHTML(task) {
+        // Draggable=true restored
+        return `<div class="rich-card" data-id="${task.id}" draggable="true" ondragstart="event.dataTransfer.setData('taskId', ${task.id})" onclick="openModal(${task.id})">
+            <div class="tag-row">
+                <span class="priority-pill" style="background:${getPriorityColor(task.priority)}">${task.priority}</span>
+                ${task.tags.map(t => `<span class="tag-pill" style="background:${getTagColor(t)}">${t}</span>`).join('')}
+            </div>
+            <div class="task-title">${task.title}</div>
+            <div class="card-footer">
+                <div class="status-dot-container">
+                    <div class="status-dot" style="background:${getStatusColor(task.status)}"></div>
+                    ${task.status}
+                </div>
+                <div>${formatDate(task.date)}</div>
+            </div>
+        </div>`;
+    }
+
+    function renderAll() {
+        const filterTag = document.getElementById('filterTag').value;
+        let visibleTasks = taskData.filter(t => t.inSidebar && (filterTag === "All" || t.tags.includes(filterTag)));
+        
+        const list = document.getElementById('taskList');
+        list.innerHTML = "";
+        visibleTasks.forEach(task => {
+            const div = document.createElement('div');
+            div.innerHTML = getRichCardHTML(task);
+            list.appendChild(div.firstElementChild);
+        });
+
+        const grid = document.getElementById('planGrid');
+        grid.innerHTML = "";
+        const groups = {};
+        visibleTasks.forEach(t => {
+            const cat = t.tags[0] || "General";
+            if (!groups[cat]) groups[cat] = [];
+            groups[cat].push(t);
+        });
+        Object.keys(groups).forEach(cat => {
+            const col = document.createElement('div');
+            col.className = 'plan-column';
+            col.innerHTML = `<div class="category-header" onclick="this.nextElementSibling.classList.toggle('collapsed')"><span>${cat}</span> <span>▾</span></div><div class="category-content">${groups[cat].map(t => getRichCardHTML(t)).join('')}</div>`;
+            grid.appendChild(col);
+        });
+
+        const todayGrid = document.getElementById('todayGrid');
+        todayGrid.innerHTML = "";
+        const todayStr = "2026-01-20";
+        const todayTasks = taskData.filter(t => t.date === todayStr);
+        const backlog = taskData.filter(t => t.date !== todayStr && t.status !== "Done");
+
+        let col1 = "", col2 = "", col3 = "";
+        let lab1 = "", lab2 = "", lab3 = "";
+
+        if (userEnergyLevel <= 3) {
+            lab1 = "Low Friction (Executive Wins)"; lab2 = "Non-Negotiable"; lab3 = "Recovery Zone";
+            col1 = taskData.filter(t => t.priority === "Low").map(t => getRichCardHTML(t)).join('');
+            col2 = todayTasks.filter(t => t.id === 1).map(t => getRichCardHTML(t)).join('');
+            col3 = `<div class="rich-card" style="border-style:dashed; opacity:0.6;"><div class="task-title">Rest Mode</div></div>`;
+        } else if (userEnergyLevel >= 8) {
+            lab1 = "Deep Work"; lab2 = "Momentum Builders"; lab3 = "Future Proofing";
+            col1 = todayTasks.filter(t => t.priority === "High").map(t => getRichCardHTML(t)).join('');
+            col2 = todayTasks.filter(t => t.priority !== "High").map(t => getRichCardHTML(t)).join('');
+            col3 = backlog.filter(t => t.id === 2).map(t => getRichCardHTML(t)).join('');
+        } else {
+            lab1 = "Primary Focus"; lab2 = "The 'Maybe' List"; lab3 = "Dopamine Rewards";
+            col1 = todayTasks.map(t => getRichCardHTML(t)).join('');
+            col2 = backlog.filter(t => t.id === 2).map(t => getRichCardHTML(t)).join('');
+            col3 = `<div class="rich-card" style="border-style:dashed; opacity:0.6;"><div class="task-title">Snack Break</div></div>`;
+        }
+
+        todayGrid.innerHTML = `<div class="today-column"><div class="column-label">${lab1}</div>${col1}</div><div class="today-column"><div class="column-label">${lab2}</div>${col2}</div><div class="today-column"><div class="column-label">${lab3}</div>${col3}</div>`;
+    }
+
+    function createNode(taskId, x, y, parent = null) {
+        const task = taskData.find(t => t.id == taskId);
+        const node = document.createElement('div');
+        node.className = 'map-node';
+        node.setAttribute('data-id', taskId);
+        node.style.left = x + 'px'; node.style.top = y + 'px';
+        node.style.background = getTagColor(task.tags[0] || "General");
+        node.innerHTML = `
+            <div style="font-size:9px; font-weight:900; opacity:0.8; text-transform:uppercase; margin-bottom:6px">${task.tags[0] || "General"}</div>
+            <textarea oninput="autoExpand(this, ${taskId})">${task.title}</textarea>
+            <div class="delete-btn">✕</div>
+            <div class="node-controls">
+                <div class="ctrl-btn node-connector" onmousedown="startConn(event, this.closest('.map-node'))">🔗</div>
+                <div class="ctrl-btn sprout-btn" onclick="sprout(${taskId}, this)">+</div>
+            </div>`;
+        node.querySelector('.delete-btn').onclick = (e) => {
+            e.stopPropagation();
+            pendingDeleteNode = node;
+            document.getElementById('confirmModal').style.display = 'flex';
+        };
+        makeDraggable(node);
+        document.getElementById('canvas').appendChild(node);
+        const ta = node.querySelector('textarea');
+        ta.style.height = ta.scrollHeight + 'px';
+        if(parent) {
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('stroke', '#cbd5e1'); line.setAttribute('stroke-width', 2);
+            document.getElementById('svg-layer').appendChild(line);
+            connections.push({ from: parent, to: node, element: line });
+        }
+        updateLines();
+    }
+
+    function executeDelete() {
+        if(!pendingDeleteNode) return;
+        connections = connections.filter(c => {
+            if(c.from === pendingDeleteNode || c.to === pendingDeleteNode) { c.element.remove(); return false; }
+            return true;
+        });
+        pendingDeleteNode.remove(); closeConfirm();
+    }
+
+    function closeConfirm() { pendingDeleteNode = null; document.getElementById('confirmModal').style.display = 'none'; }
+
+    function autoExpand(el, id) {
+        el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px';
+        const task = taskData.find(t => t.id == id);
+        if(task) task.title = el.value;
+        updateLines();
+    }
+
+    function sprout(parentId, btn) {
+        const parentNode = btn.closest('.map-node');
+        const parentTask = taskData.find(t => t.id == parentId);
+        const newTask = { id: Date.now(), title: "New Node", tags: [...parentTask.tags], priority: parentTask.priority, status: "Not started", date: "", inSidebar: false };
+        taskData.push(newTask);
+        createNode(newTask.id, parentNode.offsetLeft + 240, parentNode.offsetTop + 60, parentNode);
+    }
+
+    function makeDraggable(el) {
+        let p1=0, p2=0, p3=0, p4=0;
+        el.onmousedown = (e) => {
+            if(e.target.tagName === 'TEXTAREA' || e.target.classList.contains('ctrl-btn')) return;
+            e.stopPropagation(); p3 = e.clientX; p4 = e.clientY;
+            document.onmousemove = (me) => {
+                p1 = p3 - me.clientX; p2 = p4 - me.clientY; p3 = me.clientX; p4 = me.clientY;
+                el.style.top = (el.offsetTop - p2/scale) + "px"; el.style.left = (el.offsetLeft - p1/scale) + "px";
+                updateLines();
+            };
+            document.onmouseup = () => document.onmousemove = null;
+        };
+    }
+
+    function startConn(e, from) {
+        e.stopPropagation(); e.preventDefault();
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('stroke', '#cbd5e1'); line.setAttribute('stroke-width', 2);
+        document.getElementById('svg-layer').appendChild(line);
+        const moveHandler = (me) => {
+            const r = document.getElementById('canvas').getBoundingClientRect();
+            line.setAttribute('x1', from.offsetLeft + from.offsetWidth/2);
+            line.setAttribute('y1', from.offsetTop + from.offsetHeight/2);
+            line.setAttribute('x2', (me.clientX - r.left)/scale);
+            line.setAttribute('y2', (me.clientY - r.top)/scale);
+        };
+        document.addEventListener('mousemove', moveHandler);
+        document.addEventListener('mouseup', function up(ue) {
+            document.removeEventListener('mousemove', moveHandler);
+            document.removeEventListener('mouseup', up);
+            const target = ue.target.closest('.map-node');
+            if (target && target !== from) connections.push({ from, to: target, element: line });
+            else line.remove();
+        });
+    }
+
+    function updateLines() {
+        connections.forEach(c => {
+            c.element.setAttribute('x1', c.from.offsetLeft + c.from.offsetWidth/2);
+            c.element.setAttribute('y1', c.from.offsetTop + c.from.offsetHeight/2);
+            c.element.setAttribute('x2', c.to.offsetLeft + c.to.offsetWidth/2);
+            c.element.setAttribute('y2', c.to.offsetTop + c.to.offsetHeight/2);
+        });
+    }
+
+    function setupPanning() {
+        const attachPan = (viewId, canvasId) => {
+            const cv = document.getElementById(canvasId);
+            const view = document.getElementById(viewId);
+            if (!view || !cv) return;
+            view.onmousedown = (e) => {
+                if(e.target !== view && e.target !== cv) return;
+                let sx = e.pageX - cv.offsetLeft, sy = e.pageY - cv.offsetTop;
+                document.onmousemove = (me) => { cv.style.left = (me.pageX - sx) + 'px'; cv.style.top = (me.pageY - sy) + 'px'; };
+                document.onmouseup = () => document.onmousemove = null;
+            };
+        };
+        attachPan('canvas-view', 'canvas'); attachPan('plan-view', 'plan-canvas');
+    }
+
+    function switchView(view) {
+        currentView = view;
+        document.getElementById('canvas-view').style.display = view === 'map' ? 'block' : 'none';
+        document.getElementById('plan-view').style.display = view === 'plan' ? 'block' : 'none';
+        document.getElementById('today-view').style.display = view === 'today' ? 'block' : 'none';
+        document.querySelectorAll('.dock-btn').forEach(b => b.classList.remove('active'));
+        const btn = document.getElementById('btn-' + view);
+        if(btn) btn.classList.add('active');
+        scale = 1.0; zoom(0);
+    }
+
+    function openModal(id = null) {
+        editingId = id;
+        document.getElementById('modal').style.display = 'flex';
+        document.getElementById('deleteTaskBtn').style.display = id ? 'block' : 'none';
+        if(id) {
+            const t = taskData.find(x => x.id == id);
+            document.getElementById('tTitle').value = t.title;
+            document.getElementById('tTags').value = t.tags.join(', ');
+            document.getElementById('tPriority').value = t.priority || "Medium";
+            document.getElementById('tStatus').value = t.status;
+            document.getElementById('tDate').value = t.date;
+        }
+    }
+
+    function closeModal() { document.getElementById('modal').style.display = 'none'; editingId = null; }
+
+    document.getElementById('modalSubmit').onclick = () => {
+        const title = document.getElementById('tTitle').value;
+        const tags = document.getElementById('tTags').value.split(',').map(s=>s.trim()).filter(s=>s);
+        const priority = document.getElementById('tPriority').value;
+        const status = document.getElementById('tStatus').value;
+        const date = document.getElementById('tDate').value;
+        if(editingId) {
+            const t = taskData.find(x => x.id == editingId);
+            t.title = title; t.tags = tags; t.priority = priority; t.status = status; t.date = date;
+        } else {
+            taskData.push({ id: Date.now(), title, tags, priority, status, date, inSidebar: true });
+        }
+        closeModal(); renderAll(); updateTagFilter();
+    };
+
+    const canvas = document.getElementById('canvas');
+    canvas.ondragover = (e) => e.preventDefault();
+    canvas.ondrop = (e) => {
+        e.preventDefault();
+        const taskId = e.dataTransfer.getData("taskId");
+        const rect = canvas.getBoundingClientRect();
+        const x = (e.clientX - rect.left) / scale;
+        const y = (e.clientY - rect.top) / scale;
+        if (taskId && !document.querySelector(`.map-node[data-id="${taskId}"]`)) createNode(taskId, x, y);
+    };
+</script>
+</body>
+</html>
