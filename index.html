@@ -75,7 +75,8 @@
         
         .today-header { margin-bottom: 40px; }
         .today-grid { display: flex; gap: 30px; align-items: flex-start; max-width: 1200px; }
-        .today-column { flex: 1; display: flex; flex-direction: column; gap: 16px; }
+        .today-column { flex: 1; display: flex; flex-direction: column; gap: 16px; min-height: 200px; }
+        .today-column.drag-over { background: rgba(43, 0, 255, 0.05); border-radius: 12px; }
         .column-label { font-size: 0.75rem; font-weight: 800; color: var(--icon-gray); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
 
         .plan-container { padding: 80px; display: flex; gap: 40px; align-items: flex-start; }
@@ -128,6 +129,14 @@
         .confirm-btn { background: var(--node-del); color: white; border: none; padding: 12px; border-radius: 10px; font-weight: 700; cursor: pointer; }
         
         .delete-task-btn { background: none; border: none; color: var(--node-del); font-weight: 800; cursor: pointer; font-size: 0.75rem; margin-top: 8px; }
+
+        .card-delete-btn {
+            position: absolute; top: 8px; right: 8px; width: 24px; height: 24px;
+            background: var(--node-del); color: white; border: none; border-radius: 6px;
+            cursor: pointer; font-size: 12px; font-weight: 700; opacity: 0; transition: opacity 0.2s;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .rich-card:hover .card-delete-btn { opacity: 1; }
 
         .energy-grid { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 20px 0; }
         .energy-btn {
@@ -209,7 +218,11 @@
             <h1 style="font-weight: 900; font-size: 2.5rem; margin: 0;">Today's Focus</h1>
             <p id="todayDateLabel" style="color: var(--icon-gray); font-weight: 700; margin-top: 4px;"></p>
         </div>
-        <div id="todayGrid" class="today-grid"></div>
+        <div id="todayGrid" class="today-grid">
+            <div class="today-column" data-column="col1"></div>
+            <div class="today-column" data-column="col2"></div>
+            <div class="today-column" data-column="col3"></div>
+        </div>
     </div>
 </div>
 
@@ -261,11 +274,11 @@
 
 <script>
     let taskData = [
-        { id: 1, title: "Physics Final Project", tags: ["Physics"], priority: "High", status: "In Progress", date: "2026-01-20", inSidebar: true },
-        { id: 2, title: "Calculus III", tags: ["Math"], priority: "Medium", status: "Not started", date: "2026-06-20", inSidebar: true },
-        { id: 3, title: "English Essay Review", tags: ["English"], priority: "Low", status: "Not started", date: "2026-01-22", inSidebar: true },
-        { id: 4, title: "Lab Results Summary", tags: ["Physics"], priority: "Medium", status: "Not started", date: "2026-01-21", inSidebar: true },
-        { id: 5, title: "History Presentation", tags: ["History"], priority: "High", status: "Not started", date: "2026-01-24", inSidebar: true }
+        { id: 1, title: "Physics Final Project", tags: ["Physics"], priority: "High", status: "In Progress", date: "2026-02-15", inSidebar: true },
+        { id: 2, title: "Calculus III", tags: ["Math"], priority: "Medium", status: "Not started", date: "2026-02-28", inSidebar: true },
+        { id: 3, title: "English Essay Review", tags: ["English"], priority: "Low", status: "Not started", date: "2026-02-18", inSidebar: true },
+        { id: 4, title: "Lab Results Summary", tags: ["Physics"], priority: "Medium", status: "Not started", date: "2026-02-16", inSidebar: true },
+        { id: 5, title: "History Presentation", tags: ["History"], priority: "High", status: "Not started", date: "2026-02-12", inSidebar: true }
     ];
     let connections = [];
     let scale = 1.0;
@@ -274,10 +287,11 @@
     let editingId = null;
     let pendingDeleteNode = null;
     let userEnergyLevel = 5;
+    let todayFocusTasks = { col1: [], col2: [], col3: [] };
 
     window.onload = () => { 
-        document.getElementById('todayDateLabel').innerText = new Date("2026-01-20").toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-        updateTagFilter(); renderAll(); setupPanning(); setupWheelZoom(); 
+        document.getElementById('todayDateLabel').innerText = new Date("2026-02-10").toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+        updateTagFilter(); renderAll(); setupPanning(); setupWheelZoom(); setupTodayViewDrop(); setupKeyboardScrolling();
     };
 
     function selectEnergy(val, btn) {
@@ -298,7 +312,7 @@
         chat.style.display = 'block';
 
         setTimeout(() => {
-            const today = new Date("2026-01-20");
+            const today = new Date("2026-02-10");
             const candidates = taskData.filter(t => t.status !== "Done");
             
             let message = "";
@@ -338,7 +352,84 @@
             });
             node.remove();
         }
+        Object.keys(todayFocusTasks).forEach(col => {
+            todayFocusTasks[col] = todayFocusTasks[col].filter(id => id !== editingId);
+        });
         closeModal(); renderAll(); updateTagFilter();
+    }
+
+    function deleteTaskById(id) {
+        taskData = taskData.filter(t => t.id != id);
+        const node = document.querySelector(`.map-node[data-id="${id}"]`);
+        if (node) {
+            connections = connections.filter(c => {
+                if(c.from === node || c.to === node) { c.element.remove(); return false; }
+                return true;
+            });
+            node.remove();
+        }
+        Object.keys(todayFocusTasks).forEach(col => {
+            todayFocusTasks[col] = todayFocusTasks[col].filter(tid => tid !== id);
+        });
+        renderAll(); updateTagFilter();
+    }
+
+    function removeTodayTask(id, column) {
+        todayFocusTasks[column] = todayFocusTasks[column].filter(tid => tid !== id);
+        renderAll();
+    }
+
+    function setupTodayViewDrop() {
+        const columns = document.querySelectorAll('.today-column');
+        columns.forEach(col => {
+            col.ondragover = (e) => {
+                e.preventDefault();
+                col.classList.add('drag-over');
+            };
+            col.ondragleave = () => col.classList.remove('drag-over');
+            col.ondrop = (e) => {
+                e.preventDefault();
+                col.classList.remove('drag-over');
+                const taskId = parseInt(e.dataTransfer.getData("taskId"));
+                const columnName = col.getAttribute('data-column');
+                if (taskId && !todayFocusTasks[columnName].includes(taskId)) {
+                    Object.keys(todayFocusTasks).forEach(c => {
+                        todayFocusTasks[c] = todayFocusTasks[c].filter(id => id !== taskId);
+                    });
+                    todayFocusTasks[columnName].push(taskId);
+                    renderAll();
+                }
+            };
+        });
+    }
+
+    function setupKeyboardScrolling() {
+        document.addEventListener('keydown', (e) => {
+            if (currentView !== 'map') return;
+            const canvas = document.getElementById('canvas');
+            const step = 100;
+            let left = parseInt(canvas.style.left || 0);
+            let top = parseInt(canvas.style.top || 0);
+            
+            switch(e.key) {
+                case 'ArrowLeft':
+                    e.preventDefault();
+                    canvas.style.left = (left + step) + 'px';
+                    break;
+                case 'ArrowRight':
+                    e.preventDefault();
+                    canvas.style.left = (left - step) + 'px';
+                    break;
+                case 'ArrowUp':
+                    e.preventDefault();
+                    canvas.style.top = (top + step) + 'px';
+                    break;
+                case 'ArrowDown':
+                    e.preventDefault();
+                    canvas.style.top = (top - step) + 'px';
+                    break;
+            }
+        });
     }
 
     function handleZoomInput(el) {
@@ -406,9 +497,12 @@
         }, { passive: false });
     }
 
-    function getRichCardHTML(task) {
-        // Draggable=true restored
-        return `<div class="rich-card" data-id="${task.id}" draggable="true" ondragstart="event.dataTransfer.setData('taskId', ${task.id})" onclick="openModal(${task.id})">
+    function getRichCardHTML(task, context = 'sidebar') {
+        const deleteAction = context === 'today' 
+            ? `removeTodayTask(${task.id}, '${context.column}')` 
+            : `deleteTaskById(${task.id})`;
+        
+        return `<div class="rich-card" data-id="${task.id}" onclick="openModal(${task.id})">
             <div class="tag-row">
                 <span class="priority-pill" style="background:${getPriorityColor(task.priority)}">${task.priority}</span>
                 ${task.tags.map(t => `<span class="tag-pill" style="background:${getTagColor(t)}">${t}</span>`).join('')}
@@ -421,6 +515,7 @@
                 </div>
                 <div>${formatDate(task.date)}</div>
             </div>
+            <button class="card-delete-btn" onclick="event.stopPropagation(); ${deleteAction}" title="Delete task">✕</button>
         </div>`;
     }
 
@@ -433,7 +528,10 @@
         visibleTasks.forEach(task => {
             const div = document.createElement('div');
             div.innerHTML = getRichCardHTML(task);
-            list.appendChild(div.firstElementChild);
+            const card = div.firstElementChild;
+            card.setAttribute('draggable', 'true');
+            card.ondragstart = (e) => e.dataTransfer.setData('taskId', task.id);
+            list.appendChild(card);
         });
 
         const grid = document.getElementById('planGrid');
@@ -451,33 +549,75 @@
             grid.appendChild(col);
         });
 
-        const todayGrid = document.getElementById('todayGrid');
-        todayGrid.innerHTML = "";
-        const todayStr = "2026-01-20";
+        const todayStr = "2026-02-10";
         const todayTasks = taskData.filter(t => t.date === todayStr);
         const backlog = taskData.filter(t => t.date !== todayStr && t.status !== "Done");
+
+        const allManualIds = [...todayFocusTasks.col1, ...todayFocusTasks.col2, ...todayFocusTasks.col3];
 
         let col1 = "", col2 = "", col3 = "";
         let lab1 = "", lab2 = "", lab3 = "";
 
         if (userEnergyLevel <= 3) {
             lab1 = "Low Friction (Executive Wins)"; lab2 = "Non-Negotiable"; lab3 = "Recovery Zone";
-            col1 = taskData.filter(t => t.priority === "Low").map(t => getRichCardHTML(t)).join('');
-            col2 = todayTasks.filter(t => t.id === 1).map(t => getRichCardHTML(t)).join('');
+            col1 = taskData.filter(t => t.priority === "Low" && t.status !== "Done" && !allManualIds.includes(t.id)).map(t => getRichCardHTML(t, {column: 'col1'})).join('');
+            const highPriorityTasks = taskData
+                .filter(t => t.priority === "High" && t.status !== "Done" && !allManualIds.includes(t.id))
+                .sort((a, b) => {
+                    if (!a.date) return 1;
+                    if (!b.date) return -1;
+                    return new Date(a.date) - new Date(b.date);
+                })
+                .slice(0, 2);
+            col2 = highPriorityTasks.map(t => getRichCardHTML(t, {column: 'col2'})).join('');
             col3 = `<div class="rich-card" style="border-style:dashed; opacity:0.6;"><div class="task-title">Rest Mode</div></div>`;
         } else if (userEnergyLevel >= 8) {
             lab1 = "Deep Work"; lab2 = "Momentum Builders"; lab3 = "Future Proofing";
-            col1 = todayTasks.filter(t => t.priority === "High").map(t => getRichCardHTML(t)).join('');
-            col2 = todayTasks.filter(t => t.priority !== "High").map(t => getRichCardHTML(t)).join('');
-            col3 = backlog.filter(t => t.id === 2).map(t => getRichCardHTML(t)).join('');
+            const highPriorityTasks = taskData
+                .filter(t => t.priority === "High" && t.status !== "Done" && !allManualIds.includes(t.id))
+                .sort((a, b) => {
+                    if (!a.date) return 1;
+                    if (!b.date) return -1;
+                    return new Date(a.date) - new Date(b.date);
+                })
+                .slice(0, 2);
+            col1 = highPriorityTasks.map(t => getRichCardHTML(t, {column: 'col1'})).join('');
+            col2 = todayTasks.filter(t => t.priority !== "High" && !allManualIds.includes(t.id)).map(t => getRichCardHTML(t, {column: 'col2'})).join('');
+            col3 = backlog.filter(t => !allManualIds.includes(t.id)).slice(0, 3).map(t => getRichCardHTML(t, {column: 'col3'})).join('');
         } else {
             lab1 = "Primary Focus"; lab2 = "The 'Maybe' List"; lab3 = "Dopamine Rewards";
-            col1 = todayTasks.map(t => getRichCardHTML(t)).join('');
-            col2 = backlog.filter(t => t.id === 2).map(t => getRichCardHTML(t)).join('');
+            col1 = todayTasks.filter(t => !allManualIds.includes(t.id)).map(t => getRichCardHTML(t, {column: 'col1'})).join('');
+            col2 = backlog.filter(t => !allManualIds.includes(t.id)).slice(0, 3).map(t => getRichCardHTML(t, {column: 'col2'})).join('');
             col3 = `<div class="rich-card" style="border-style:dashed; opacity:0.6;"><div class="task-title">Snack Break</div></div>`;
         }
 
-        todayGrid.innerHTML = `<div class="today-column"><div class="column-label">${lab1}</div>${col1}</div><div class="today-column"><div class="column-label">${lab2}</div>${col2}</div><div class="today-column"><div class="column-label">${lab3}</div>${col3}</div>`;
+        const manualCol1 = todayFocusTasks.col1.map(id => {
+            const task = taskData.find(t => t.id === id);
+            return task ? getRichCardHTML(task, {column: 'col1'}) : '';
+        }).join('');
+        const manualCol2 = todayFocusTasks.col2.map(id => {
+            const task = taskData.find(t => t.id === id);
+            return task ? getRichCardHTML(task, {column: 'col2'}) : '';
+        }).join('');
+        const manualCol3 = todayFocusTasks.col3.map(id => {
+            const task = taskData.find(t => t.id === id);
+            return task ? getRichCardHTML(task, {column: 'col3'}) : '';
+        }).join('');
+
+        col1 = manualCol1 + col1;
+        col2 = manualCol2 + col2;
+        col3 = manualCol3 + col3;
+
+        document.querySelector('.today-column[data-column="col1"]').innerHTML = `<div class="column-label">${lab1}</div>${col1}`;
+        document.querySelector('.today-column[data-column="col2"]').innerHTML = `<div class="column-label">${lab2}</div>${col2}`;
+        document.querySelector('.today-column[data-column="col3"]').innerHTML = `<div class="column-label">${lab3}</div>${col3}`;
+
+        document.querySelectorAll('.today-column .rich-card').forEach(card => {
+            card.setAttribute('draggable', 'true');
+            card.ondragstart = (e) => {
+                e.dataTransfer.setData('taskId', card.getAttribute('data-id'));
+            };
+        });
     }
 
     function createNode(taskId, x, y, parent = null) {
