@@ -63,6 +63,7 @@
         /* --- VIEWPORT --- */
         #viewport { flex-grow: 1; position: relative; overflow: hidden; background: #fafafa; }
         #canvas-view, #plan-view, #today-view { position: absolute; width: 100%; height: 100%; top: 0; left: 0; transform-origin: 0 0; }
+        #canvas-view { overflow: auto; }
         #canvas, #plan-canvas { 
             width: 5000px; height: 5000px; position: absolute; 
             background-image: radial-gradient(#e2e8f0 1.5px, transparent 1.5px); 
@@ -70,12 +71,12 @@
             transform-origin: 0 0;
         }
         
-        #plan-view { display: none; z-index: 5; background: #fafafa; }
-        #today-view { display: none; z-index: 6; background: #fafafa; padding: 60px; box-sizing: border-box; overflow-y: auto; }
+        #plan-view { display: none; z-index: 5; background: #fafafa; overflow-x: auto; overflow-y: auto; }
+        #today-view { display: none; z-index: 6; background: #fafafa; padding: 60px; box-sizing: border-box; overflow-x: auto; overflow-y: auto; }
         
         .today-header { margin-bottom: 40px; }
         .today-grid { display: flex; gap: 30px; align-items: flex-start; max-width: 1200px; }
-        .today-column { flex: 1; display: flex; flex-direction: column; gap: 16px; min-height: 200px; }
+        .today-column { flex: 1; display: flex; flex-direction: column; gap: 16px; min-height: 600px; padding: 16px; }
         .today-column.drag-over { background: rgba(43, 0, 255, 0.05); border-radius: 12px; }
         .column-label { font-size: 0.75rem; font-weight: 800; color: var(--icon-gray); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
 
@@ -211,7 +212,17 @@
 </div>
 
 <div id="viewport">
-    <div id="canvas-view"><div id="canvas"><svg id="svg-layer"></svg></div></div>
+    <div id="canvas-view">
+        <div id="mindMapBranding" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; z-index: 10; text-align: center;">
+            <div style="font-size: 1.6rem; font-weight: 900; letter-spacing: -0.05em; color: #000;">
+                mind map
+            </div>
+            <div style="font-size: 0.75rem; color: var(--icon-gray); font-weight: 600; margin-top: 4px;">drag a task onto the grid</div>
+        </div>
+        <div id="canvas">
+            <svg id="svg-layer"></svg>
+        </div>
+    </div>
     <div id="plan-view"><div id="plan-canvas"><div class="plan-container" id="planGrid"></div></div></div>
     <div id="today-view">
         <div class="today-header">
@@ -258,7 +269,7 @@
         <label>Status</label>
         <select id="tStatus"><option>Not started</option><option>In Progress</option><option>Done</option></select>
         <button class="create-btn" id="modalSubmit">Save Task</button>
-        <button id="deleteTaskBtn" class="delete-task-btn" onclick="deleteTask()">Delete Task Permanently</button>
+        <button id="deleteTaskBtn" class="delete-task-btn" onclick="showDeleteConfirmation()">Delete Task Permanently</button>
         <button onclick="closeModal()" style="background:none; border:none; color:var(--icon-gray); cursor:pointer; font-weight:800; margin-top: 4px;">Cancel</button>
     </div>
 </div>
@@ -269,6 +280,15 @@
         <p style="font-size: 0.9rem; color: var(--icon-gray); font-weight: 600;">This will remove the node permanently.</p>
         <button class="confirm-btn" onclick="executeDelete()">Delete</button>
         <button onclick="closeConfirm()" style="background:none; border:none; color:var(--icon-gray); cursor:pointer; font-weight:800;">Cancel</button>
+    </div>
+</div>
+
+<div id="deleteConfirmModal" class="modal-overlay">
+    <div class="modal-content" style="text-align: center;">
+        <h3 style="margin:0; font-weight:900;">Delete Task Permanently?</h3>
+        <p style="font-size: 0.9rem; color: var(--icon-gray); font-weight: 600;">This will remove the task from everywhere. This cannot be undone.</p>
+        <button class="confirm-btn" onclick="confirmDeleteTask()">Delete Permanently</button>
+        <button onclick="closeDeleteConfirm()" style="background:none; border:none; color:var(--icon-gray); cursor:pointer; font-weight:800;">Cancel</button>
     </div>
 </div>
 
@@ -288,6 +308,8 @@
     let pendingDeleteNode = null;
     let userEnergyLevel = 5;
     let todayFocusTasks = { col1: [], col2: [], col3: [] };
+    let pendingDeleteId = null;
+    let excludedFromToday = [];
 
     window.onload = () => { 
         document.getElementById('todayDateLabel').innerText = new Date("2026-02-10").toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
@@ -341,6 +363,24 @@
         }, 1200);
     }
 
+    function showDeleteConfirmation() {
+        document.getElementById('deleteConfirmModal').style.display = 'flex';
+    }
+
+    function closeDeleteConfirm() {
+        document.getElementById('deleteConfirmModal').style.display = 'none';
+        pendingDeleteId = null;
+    }
+
+    function confirmDeleteTask() {
+        if (editingId) {
+            deleteTask();
+        } else if (pendingDeleteId) {
+            deleteTaskById(pendingDeleteId);
+        }
+        closeDeleteConfirm();
+    }
+
     function deleteTask() {
         if (!editingId) return;
         taskData = taskData.filter(t => t.id != editingId);
@@ -359,8 +399,14 @@
     }
 
     function deleteTaskById(id) {
-        taskData = taskData.filter(t => t.id != id);
-        const node = document.querySelector(`.map-node[data-id="${id}"]`);
+        pendingDeleteId = id;
+        document.getElementById('deleteConfirmModal').style.display = 'flex';
+    }
+
+    function executeDeleteById() {
+        if (!pendingDeleteId) return;
+        taskData = taskData.filter(t => t.id != pendingDeleteId);
+        const node = document.querySelector(`.map-node[data-id="${pendingDeleteId}"]`);
         if (node) {
             connections = connections.filter(c => {
                 if(c.from === node || c.to === node) { c.element.remove(); return false; }
@@ -369,13 +415,19 @@
             node.remove();
         }
         Object.keys(todayFocusTasks).forEach(col => {
-            todayFocusTasks[col] = todayFocusTasks[col].filter(tid => tid !== id);
+            todayFocusTasks[col] = todayFocusTasks[col].filter(tid => tid !== pendingDeleteId);
         });
+        pendingDeleteId = null;
         renderAll(); updateTagFilter();
     }
 
     function removeTodayTask(id, column) {
+        // Remove from manual assignments if it's there
         todayFocusTasks[column] = todayFocusTasks[column].filter(tid => tid !== id);
+        // Add to excluded list so auto-suggestions won't show it again
+        if (!excludedFromToday.includes(id)) {
+            excludedFromToday.push(id);
+        }
         renderAll();
     }
 
@@ -498,9 +550,10 @@
     }
 
     function getRichCardHTML(task, context = 'sidebar') {
-        const deleteAction = context === 'today' 
-            ? `removeTodayTask(${task.id}, '${context.column}')` 
-            : `deleteTaskById(${task.id})`;
+        const isToday = typeof context === 'object' && context.column;
+        const deleteAttr = isToday 
+            ? `data-delete-type="today" data-column="${context.column}"` 
+            : `data-delete-type="permanent"`;
         
         return `<div class="rich-card" data-id="${task.id}" onclick="openModal(${task.id})">
             <div class="tag-row">
@@ -515,7 +568,7 @@
                 </div>
                 <div>${formatDate(task.date)}</div>
             </div>
-            <button class="card-delete-btn" onclick="event.stopPropagation(); ${deleteAction}" title="Delete task">✕</button>
+            <button class="card-delete-btn" ${deleteAttr} title="${isToday ? 'Remove from today' : 'Delete task'}">✕</button>
         </div>`;
     }
 
@@ -531,6 +584,15 @@
             const card = div.firstElementChild;
             card.setAttribute('draggable', 'true');
             card.ondragstart = (e) => e.dataTransfer.setData('taskId', task.id);
+            
+            const deleteBtn = card.querySelector('.card-delete-btn');
+            if (deleteBtn) {
+                deleteBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    deleteTaskById(task.id);
+                };
+            }
+            
             list.appendChild(card);
         });
 
@@ -560,9 +622,9 @@
 
         if (userEnergyLevel <= 3) {
             lab1 = "Low Friction (Executive Wins)"; lab2 = "Non-Negotiable"; lab3 = "Recovery Zone";
-            col1 = taskData.filter(t => t.priority === "Low" && t.status !== "Done" && !allManualIds.includes(t.id)).map(t => getRichCardHTML(t, {column: 'col1'})).join('');
+            col1 = taskData.filter(t => t.priority === "Low" && t.status !== "Done" && !allManualIds.includes(t.id) && !excludedFromToday.includes(t.id)).map(t => getRichCardHTML(t, {column: 'col1'})).join('');
             const highPriorityTasks = taskData
-                .filter(t => t.priority === "High" && t.status !== "Done" && !allManualIds.includes(t.id))
+                .filter(t => t.priority === "High" && t.status !== "Done" && !allManualIds.includes(t.id) && !excludedFromToday.includes(t.id))
                 .sort((a, b) => {
                     if (!a.date) return 1;
                     if (!b.date) return -1;
@@ -574,7 +636,7 @@
         } else if (userEnergyLevel >= 8) {
             lab1 = "Deep Work"; lab2 = "Momentum Builders"; lab3 = "Future Proofing";
             const highPriorityTasks = taskData
-                .filter(t => t.priority === "High" && t.status !== "Done" && !allManualIds.includes(t.id))
+                .filter(t => t.priority === "High" && t.status !== "Done" && !allManualIds.includes(t.id) && !excludedFromToday.includes(t.id))
                 .sort((a, b) => {
                     if (!a.date) return 1;
                     if (!b.date) return -1;
@@ -582,12 +644,12 @@
                 })
                 .slice(0, 2);
             col1 = highPriorityTasks.map(t => getRichCardHTML(t, {column: 'col1'})).join('');
-            col2 = todayTasks.filter(t => t.priority !== "High" && !allManualIds.includes(t.id)).map(t => getRichCardHTML(t, {column: 'col2'})).join('');
-            col3 = backlog.filter(t => !allManualIds.includes(t.id)).slice(0, 3).map(t => getRichCardHTML(t, {column: 'col3'})).join('');
+            col2 = todayTasks.filter(t => t.priority !== "High" && !allManualIds.includes(t.id) && !excludedFromToday.includes(t.id)).map(t => getRichCardHTML(t, {column: 'col2'})).join('');
+            col3 = backlog.filter(t => !allManualIds.includes(t.id) && !excludedFromToday.includes(t.id)).slice(0, 3).map(t => getRichCardHTML(t, {column: 'col3'})).join('');
         } else {
             lab1 = "Primary Focus"; lab2 = "The 'Maybe' List"; lab3 = "Dopamine Rewards";
-            col1 = todayTasks.filter(t => !allManualIds.includes(t.id)).map(t => getRichCardHTML(t, {column: 'col1'})).join('');
-            col2 = backlog.filter(t => !allManualIds.includes(t.id)).slice(0, 3).map(t => getRichCardHTML(t, {column: 'col2'})).join('');
+            col1 = todayTasks.filter(t => !allManualIds.includes(t.id) && !excludedFromToday.includes(t.id)).map(t => getRichCardHTML(t, {column: 'col1'})).join('');
+            col2 = backlog.filter(t => !allManualIds.includes(t.id) && !excludedFromToday.includes(t.id)).slice(0, 3).map(t => getRichCardHTML(t, {column: 'col2'})).join('');
             col3 = `<div class="rich-card" style="border-style:dashed; opacity:0.6;"><div class="task-title">Snack Break</div></div>`;
         }
 
@@ -613,10 +675,26 @@
         document.querySelector('.today-column[data-column="col3"]').innerHTML = `<div class="column-label">${lab3}</div>${col3}`;
 
         document.querySelectorAll('.today-column .rich-card').forEach(card => {
+            if (!card.hasAttribute('data-id')) return;
             card.setAttribute('draggable', 'true');
             card.ondragstart = (e) => {
                 e.dataTransfer.setData('taskId', card.getAttribute('data-id'));
             };
+            
+            const deleteBtn = card.querySelector('.card-delete-btn');
+            if (deleteBtn) {
+                deleteBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    const taskId = parseInt(card.getAttribute('data-id'));
+                    const deleteType = deleteBtn.getAttribute('data-delete-type');
+                    if (deleteType === 'today') {
+                        const column = deleteBtn.getAttribute('data-column');
+                        removeTodayTask(taskId, column);
+                    } else {
+                        deleteTaskById(taskId);
+                    }
+                };
+            }
         });
     }
 
@@ -651,6 +729,10 @@
             connections.push({ from: parent, to: node, element: line });
         }
         updateLines();
+        
+        // CHANGED: Hide branding text when first node is placed
+        const branding = document.getElementById('mindMapBranding');
+        if (branding) branding.style.display = 'none';
     }
 
     function executeDelete() {
@@ -659,7 +741,13 @@
             if(c.from === pendingDeleteNode || c.to === pendingDeleteNode) { c.element.remove(); return false; }
             return true;
         });
-        pendingDeleteNode.remove(); closeConfirm();
+        pendingDeleteNode.remove(); 
+        closeConfirm();
+        
+        // CHANGED: Show branding again if no nodes remain
+        const hasNodes = document.querySelectorAll('.map-node').length > 0;
+        const branding = document.getElementById('mindMapBranding');
+        if (branding && !hasNodes) branding.style.display = 'block';
     }
 
     function closeConfirm() { pendingDeleteNode = null; document.getElementById('confirmModal').style.display = 'none'; }
@@ -748,6 +836,13 @@
         const btn = document.getElementById('btn-' + view);
         if(btn) btn.classList.add('active');
         scale = 1.0; zoom(0);
+        
+        // CHANGED: Show/hide branding based on whether nodes exist
+        if (view === 'map') {
+            const branding = document.getElementById('mindMapBranding');
+            const hasNodes = document.querySelectorAll('.map-node').length > 0;
+            if (branding) branding.style.display = hasNodes ? 'none' : 'block';
+        }
     }
 
     function openModal(id = null) {
